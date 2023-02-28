@@ -496,6 +496,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 const fs = __importStar(__nccwpck_require__(7147));
+const jsyaml = __importStar(__nccwpck_require__(1917));
 const core = __importStar(__nccwpck_require__(2186));
 const github = __importStar(__nccwpck_require__(5438));
 const filter_1 = __nccwpck_require__(3707);
@@ -512,19 +513,40 @@ async function run() {
         const token = core.getInput('token', { required: false });
         const ref = core.getInput('ref', { required: false });
         const base = core.getInput('base', { required: false });
-        const filtersInput = core.getInput('filters', { required: true });
-        const filtersYaml = isPathInput(filtersInput) ? getConfigFileContent(filtersInput) : filtersInput;
-        const listFiles = core.getInput('list-files', { required: false }).toLowerCase() || 'none';
         const initialFetchDepth = parseInt(core.getInput('initial-fetch-depth', { required: false })) || 10;
+        const listFiles = core.getInput('list-files', { required: false }).toLowerCase() || 'none';
         if (!isExportFormat(listFiles)) {
             core.setFailed(`Input parameter 'list-files' is set to invalid value '${listFiles}'`);
             return;
         }
-        const filter = new filter_1.Filter(filtersYaml);
         const files = await getChangedFiles(token, base, ref, initialFetchDepth);
         core.info(`Detected ${files.length} changed files`);
-        const results = filter.match(files);
-        exportResults(results, listFiles);
+        const topMode = core.getInput('top-mode', { required: false });
+        const topGlob = core.getInput('top-glob', { required: false });
+        if (topMode === 'true') {
+            // split at first /; sort by first item; group by first item
+            const groupedFiles = files.map(f => f.filename.split('/', 2)).sort((a, b) => a[0].localeCompare(b[0]));
+            // find unique first items
+            const topFolders = [...new Set(groupedFiles.map(f => f[0]))];
+            let matchedFolders = [];
+            for (const folder of topFolders) {
+                // generate the YAML
+                const filtersYaml = jsyaml.dump({ [folder]: `${folder}/${topGlob}` });
+                const filter = new filter_1.Filter(filtersYaml);
+                const results = filter.match(files);
+                if (results[folder].length > 0) {
+                    matchedFolders.push(folder);
+                }
+                exportTopModeResults(matchedFolders);
+            }
+        }
+        else {
+            const filtersInput = core.getInput('filters', { required: false });
+            const filtersYaml = isPathInput(filtersInput) ? getConfigFileContent(filtersInput) : filtersInput;
+            const filter = new filter_1.Filter(filtersYaml);
+            const results = filter.match(files);
+            exportResults(results, listFiles);
+        }
     }
     catch (error) {
         core.setFailed(error.message);
@@ -672,6 +694,15 @@ async function getChangedFilesFromApi(token, prNumber) {
     finally {
         core.endGroup();
     }
+}
+function exportTopModeResults(changedFolders) {
+    core.info('Matching folders:');
+    for (const folder of changedFolders) {
+        core.info(folder);
+    }
+    const changesJson = JSON.stringify(changedFolders);
+    core.info(`Changes output set to ${changesJson}`);
+    core.setOutput('changes', changesJson);
 }
 function exportResults(results, format) {
     core.info('Results:');

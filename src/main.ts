@@ -61,7 +61,7 @@ async function run(): Promise<void> {
       const results = filter.match(files)
       exportResults(results, listFiles)
     }
-  } catch (error: any) {
+  } catch (error) {
     core.setFailed(error.message)
   }
 }
