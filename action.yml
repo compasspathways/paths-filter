@@ -20,14 +20,20 @@ inputs:
       If it references same branch it was pushed to, changes are detected against the most recent commit before the push.
       This option is ignored if action is triggered by pull_request event.
     required: false
+  top-mode:
+    description: Group changes based on top-level directories
+    required: false
+  top-glob:
+    description: Glob pattern to match top-level directories
+    required: false
   filters:
     description: 'Path to the configuration file or YAML string with filters definition'
-    required: true
+    required: false
   list-files:
     description: |
       Enables listing of files matching the filter:
         'none'  - Disables listing of matching files (default).
-        'csv'   - Coma separated list of filenames.
+        'csv'   - Comma separated list of filenames.
                   If needed it uses double quotes to wrap filename with unsafe characters.
         'json'  - Serialized as JSON array.
         'shell' - Space delimited list usable as command line argument list in linux shell.

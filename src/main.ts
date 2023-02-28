@@ -1,4 +1,5 @@
 import * as fs from 'fs'
+import * as jsyaml from 'js-yaml'
 import * as core from '@actions/core'
 import * as github from '@actions/github'
 import type {Octokit} from '@octokit/rest'
@@ -22,22 +23,37 @@ async function run(): Promise<void> {
     const token = core.getInput('token', {required: false})
     const ref = core.getInput('ref', {required: false})
     const base = core.getInput('base', {required: false})
-    const filtersInput = core.getInput('filters', {required: true})
-    const filtersYaml = isPathInput(filtersInput) ? getConfigFileContent(filtersInput) : filtersInput
-    const listFiles = core.getInput('list-files', {required: false}).toLowerCase() || 'none'
     const initialFetchDepth = parseInt(core.getInput('initial-fetch-depth', {required: false})) || 10
+    const listFiles = core.getInput('list-files', {required: false}).toLowerCase() || 'none'
 
     if (!isExportFormat(listFiles)) {
       core.setFailed(`Input parameter 'list-files' is set to invalid value '${listFiles}'`)
       return
     }
 
-    const filter = new Filter(filtersYaml)
     const files = await getChangedFiles(token, base, ref, initialFetchDepth)
+
     core.info(`Detected ${files.length} changed files`)
+
+    const topMode = core.getInput('top-mode', {required: false})
+    const topGlob = core.getInput('top-glob', {required: false})
+
+    let filtersYaml = ''
+    if (topMode === 'true') {
+      // split at first /; sort by first item; group by first item
+      const groupedFiles = files.map(f => f.filename.split('/', 2)).sort((a, b) => a[0].localeCompare(b[0]))
+      // find unique first items
+      const topFolders = [...new Set(groupedFiles.map(f => f[0]))]
+      // generate the YAML
+      filtersYaml = jsyaml.dump(topFolders.map(f => ({[f]: `${f}/${topGlob}`})))
+    } else {
+      const filtersInput = core.getInput('filters', {required: false})
+      filtersYaml = isPathInput(filtersInput) ? getConfigFileContent(filtersInput) : filtersInput
+    }
+    const filter = new Filter(filtersYaml)
     const results = filter.match(files)
     exportResults(results, listFiles)
-  } catch (error) {
+  } catch (error: any) {
     core.setFailed(error.message)
   }
 }
