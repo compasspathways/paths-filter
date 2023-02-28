@@ -52,8 +52,8 @@ async function run(): Promise<void> {
         if (results[folder].length > 0) {
           matchedFolders.push(folder)
         }
-        exportTopModeResults(matchedFolders)
       }
+      exportTopModeResults(matchedFolders)
     } else {
       const filtersInput = core.getInput('filters', {required: false})
       const filtersYaml = isPathInput(filtersInput) ? getConfigFileContent(filtersInput) : filtersInput

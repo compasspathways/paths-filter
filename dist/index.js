@@ -537,8 +537,8 @@ async function run() {
                 if (results[folder].length > 0) {
                     matchedFolders.push(folder);
                 }
-                exportTopModeResults(matchedFolders);
             }
+            exportTopModeResults(matchedFolders);
         }
         else {
             const filtersInput = core.getInput('filters', { required: false });
