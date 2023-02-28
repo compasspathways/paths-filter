@@ -38,21 +38,29 @@ async function run(): Promise<void> {
     const topMode = core.getInput('top-mode', {required: false})
     const topGlob = core.getInput('top-glob', {required: false})
 
-    let filtersYaml = ''
     if (topMode === 'true') {
       // split at first /; sort by first item; group by first item
       const groupedFiles = files.map(f => f.filename.split('/', 2)).sort((a, b) => a[0].localeCompare(b[0]))
       // find unique first items
       const topFolders = [...new Set(groupedFiles.map(f => f[0]))]
-      // generate the YAML
-      filtersYaml = jsyaml.dump(topFolders.map(f => ({[f]: `${f}/${topGlob}`})))
+      let matchedFolders = []
+      for (const folder of topFolders) {
+        // generate the YAML
+        const filtersYaml = jsyaml.dump({[folder]: `${folder}/${topGlob}`})
+        const filter = new Filter(filtersYaml)
+        const results = filter.match(files)
+        if (results[folder].length > 0) {
+          matchedFolders.push(folder)
+        }
+        exportTopModeResults(matchedFolders)
+      }
     } else {
       const filtersInput = core.getInput('filters', {required: false})
-      filtersYaml = isPathInput(filtersInput) ? getConfigFileContent(filtersInput) : filtersInput
+      const filtersYaml = isPathInput(filtersInput) ? getConfigFileContent(filtersInput) : filtersInput
+      const filter = new Filter(filtersYaml)
+      const results = filter.match(files)
+      exportResults(results, listFiles)
     }
-    const filter = new Filter(filtersYaml)
-    const results = filter.match(files)
-    exportResults(results, listFiles)
   } catch (error: any) {
     core.setFailed(error.message)
   }
@@ -227,6 +235,17 @@ async function getChangedFilesFromApi(
   } finally {
     core.endGroup()
   }
+}
+
+function exportTopModeResults(changedFolders: string[]): void {
+  core.info('Matching folders:')
+  for (const folder of changedFolders) {
+    core.info(folder)
+  }
+
+  const changesJson = JSON.stringify(changedFolders)
+  core.info(`Changes output set to ${changesJson}`)
+  core.setOutput('changes', changesJson)
 }
 
 function exportResults(results: FilterResults, format: ExportFormat): void {
