@@ -37,12 +37,13 @@ async function run(): Promise<void> {
 
     const topMode = core.getInput('top-mode', {required: false})
     const topGlob = core.getInput('top-glob', {required: false})
+    const topExclude = JSON.parse(core.getInput('top-exclude', {required: false}) || '[]')
 
     if (topMode === 'true') {
       // split at first /; sort by first item; group by first item
       const groupedFiles = files.map(f => f.filename.split('/', 2)).sort((a, b) => a[0].localeCompare(b[0]))
       // find unique first items
-      const topFolders = [...new Set(groupedFiles.map(f => f[0]))]
+      const topFolders = [...new Set(groupedFiles.map(f => f[0]))].filter(f => !topExclude.includes(f))
       let matchedFolders = []
       for (const folder of topFolders) {
         // generate the YAML

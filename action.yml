@@ -26,6 +26,9 @@ inputs:
   top-glob:
     description: Glob pattern to match top-level directories
     required: false
+  top-exclude:
+    description: List of folders to exclude from top-level directories
+    required: false
   filters:
     description: 'Path to the configuration file or YAML string with filters definition'
     required: false
