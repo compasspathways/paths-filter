@@ -2,14 +2,14 @@ import * as fs from 'fs'
 import * as jsyaml from 'js-yaml'
 import * as core from '@actions/core'
 import * as github from '@actions/github'
-import type {Octokit} from '@octokit/rest'
-import {Webhooks} from '@octokit/webhooks'
-
+import * as git from './git'
 import {Filter, FilterResults} from './filter'
 import {File, ChangeStatus} from './file'
-import * as git from './git'
 import {backslashEscape, shellEscape} from './list-format/shell-escape'
 import {csvEscape} from './list-format/csv-escape'
+
+import type {PullRequest} from '@octokit/webhooks-types'
+import type {GetResponseDataTypeFromEndpointMethod} from '@octokit/types'
 
 type ExportFormat = 'none' | 'csv' | 'json' | 'shell' | 'escape'
 
@@ -63,7 +63,7 @@ async function run(): Promise<void> {
       exportResults(results, listFiles)
     }
   } catch (error) {
-    core.setFailed(error.message)
+    core.setFailed((error as any).message)
   }
 }
 
@@ -101,7 +101,7 @@ async function getChangedFiles(token: string, base: string, ref: string, initial
     if (base) {
       core.warning(`'base' input parameter is ignored when action is triggered by pull request event`)
     }
-    const pr = github.context.payload.pull_request as Webhooks.WebhookPayloadPullRequestPullRequest
+    const pr = github.context.payload.pull_request as PullRequest
     if (token) {
       return await getChangedFilesFromApi(token, pr)
     }
@@ -121,8 +121,7 @@ async function getChangedFiles(token: string, base: string, ref: string, initial
 async function getChangedFilesFromGit(base: string, head: string, initialFetchDepth: number): Promise<File[]> {
   const defaultBranch = github.context.payload.repository?.default_branch
 
-  const beforeSha =
-    github.context.eventName === 'push' ? (github.context.payload as Webhooks.WebhookPayloadPush).before : null
+  const beforeSha = github.context.eventName === 'push' ? github.context.payload.before : null
 
   const currentRef = await git.getCurrentRef()
 
@@ -182,31 +181,30 @@ async function getChangedFilesFromGit(base: string, head: string, initialFetchDe
 }
 
 // Uses github REST api to get list of files changed in PR
-async function getChangedFilesFromApi(
-  token: string,
-  prNumber: Webhooks.WebhookPayloadPullRequestPullRequest
-): Promise<File[]> {
+async function getChangedFilesFromApi(token: string, prNumber: PullRequest): Promise<File[]> {
   core.startGroup(`Fetching list of changed files for PR#${prNumber.number} from Github API`)
   try {
-    const client = new github.GitHub(token)
+    const client = github.getOctokit(token)
     const per_page = 100
     const files: File[] = []
 
     core.info(`Invoking listFiles(pull_number: ${prNumber.number}, per_page: ${per_page})`)
     for await (const response of client.paginate.iterator(
-      client.pulls.listFiles.endpoint.merge({
+      client.rest.pulls.listFiles.endpoint.merge({
         owner: github.context.repo.owner,
         repo: github.context.repo.repo,
         pull_number: prNumber.number,
         per_page
       })
-    ) as AsyncIterableIterator<Octokit.Response<Octokit.PullsListFilesResponse>>) {
+    )) {
       if (response.status !== 200) {
         throw new Error(`Fetching list of changed files from GitHub API failed with error code ${response.status}`)
       }
       core.info(`Received ${response.data.length} items`)
 
-      for (const row of response.data) {
+      type PullsListFilesResponse = GetResponseDataTypeFromEndpointMethod<typeof client.rest.pulls.listFiles>
+
+      for (const row of response.data as PullsListFilesResponse) {
         core.info(`[${row.status}] ${row.filename}`)
         // There's no obvious use-case for detection of renames
         // Therefore we treat it as if rename detection in git diff was turned off.
@@ -218,7 +216,7 @@ async function getChangedFilesFromApi(
           })
           files.push({
             // 'previous_filename' for some unknown reason isn't in the type definition or documentation
-            filename: (<any>row).previous_filename as string,
+            filename: row.previous_filename as string,
             status: ChangeStatus.Deleted
           })
         } else {
